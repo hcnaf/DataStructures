@@ -7,129 +7,201 @@ namespace Tasks
 {
     public class DoublyLinkedList<T> : IDoublyLinkedList<T>
     {
-        private T[] _array = Array.Empty<T>();
+        private Node<T> _head;
+        private Node<T> _current;
         private int _count;
         private int _version;
-
         public int Length => _count;
 
         public void Add(T e)
         {
-            if (_array.Length == 0)
-                _array = new T[1];
+            var newNode = new Node<T>(this, e);
+            if (_head is null)
+            {
+                AddHead(newNode);
+                return;
+            }
 
-            if (_count == _array.Length)
-                Array.Resize(ref _array, _array.Length * 2);
-
-            _array[_count++] = e;
-            ++_version;
+            InsertNodeBefore(_head, newNode);
         }
 
         public void AddAt(int index, T e)
         {
-            if (index > _count)
-                 throw new IndexOutOfRangeException(nameof(index));
+            if (index < 0 || index > _count)
+                throw new IndexOutOfRangeException(nameof(index));
 
-            if (_count == _array.Length)
-                Array.Resize(ref _array, _array.Length * 2);
+            var newNode = new Node<T>(this, e);
+            if (_head is null)
+            {
+                AddHead(newNode);
+                return;
+            }
 
-            if (_array.Length == 0)
-                _array = new T[1];
-
-            if (index < _count)
-                Array.Copy(_array, index, _array, index + 1, _count - index);
-
-            _array[index] = e;
-            _count++;
-            _version++;
+            InsertNodeBefore(NodeAt(index), newNode);
+            if (index == 0)
+                _head = newNode;
         }
 
-        public T ElementAt(int index) => _array[index];
-
-        public IEnumerator<T> GetEnumerator() => new Enumerator(this);
+        public T ElementAt(int index) => index < 0 || index >= _count
+            ? throw new IndexOutOfRangeException(nameof(index))
+            : NodeAt(index).data;
 
         public void Remove(T item)
         {
-            var index = Array.IndexOf(_array, item);
-
-            if (index == -1)
-                return;
-
-            RemoveAt(index);
+            var node = FindFirst(item);
+            if (node != null)
+                RemoveNode(node);
         }
 
         public T RemoveAt(int index)
         {
-            if (index >= _count)
+            if (index < 0 || index >= _count)
                 throw new IndexOutOfRangeException(nameof(index));
 
-            var res = _array[index];
+            var node = NodeAt(index);
+            if (node != null)
+                RemoveNode(node);
 
-            if (index < --_count)
-                Array.Copy(_array, index + 1, _array, index, _count - index);
+            return node.data;
+        }
 
-            _array[_count] = default;
+        public IEnumerator<T> GetEnumerator() => new Enumerator(this);
+
+        IEnumerator IEnumerable.GetEnumerator() => new Enumerator(this);
+
+        private void InsertNodeBefore(Node<T> nextNode, Node<T> newNode)
+        {
+            newNode.previous = nextNode.previous;
+            newNode.next = nextNode;
+            nextNode.previous.next = newNode;
+            nextNode.previous = newNode;
             _version++;
+            _count++;
+        }
+
+        private void RemoveNode(Node<T> node)
+        {
+            if (node.next == node)
+            {
+                _head = null;
+            }
+            else
+            {
+                node.next.previous = node.previous;
+                node.previous.next = node.next;
+                if (_head == node)
+                    _head = node.next;
+            }
+
+            _count--;
+            _version++;
+        }
+
+        public struct Enumerator : IEnumerator, IEnumerator<T>
+        {
+            private DoublyLinkedList<T> _list;
+
+            private Node<T> _node;
+
+            private int _version;
+
+            private T _current;
+
+            private int _index;
+            public object Current => _index != 0 && _index != _list._count + 1 ? _current : throw new InvalidOperationException("Enumerator didn't started or already ended.");
+
+            internal Enumerator(DoublyLinkedList<T> list)
+            {
+                this._list = list;
+                _version = list._version;
+                _node = list._head;
+                _current = default(T);
+                _index = 0;
+            }
+
+            T IEnumerator<T>.Current => _current;
+
+            public void Dispose() { }
+
+            public bool MoveNext()
+            {
+                if (_version != _list._version)
+                {
+                    throw new InvalidOperationException("Doubly linked list was modified.");
+                }
+                if (_node is null)
+                {
+                    _index = _list._count + 1;
+                    return false;
+                }
+                _index++;
+                _current = _node.data;
+                _node = _node.next;
+                if (_node == _list._head)
+                {
+                    _node = null;
+                }
+                return true;
+            }
+
+            public void Reset()
+            {
+                if (_version != _list._version)
+                {
+                    throw new InvalidOperationException("Doubly linked list was modified.");
+                }
+                _current = default(T);
+                _node = _list._head;
+                _index = 0;
+            }
+        }
+
+        private void AddHead(Node<T> newNode)
+        {
+            newNode.next = newNode;
+            newNode.previous = newNode;
+            _head = newNode;
+            _version++;
+            _count++;
+        }
+
+        private Node<T> NodeAt(int index)
+        {
+            var res = _head;
+            for(int i = 0; i < index; i++)
+                res = res.next;
 
             return res;
         }
 
-        IEnumerator IEnumerable.GetEnumerator() => new Enumerator(this);
+        private Node<T> FindFirst(T data)
+        {
+            var node = _head;
+            if (node is null)
+                return null;
 
-		public struct Enumerator : IEnumerator<T>, IDisposable, IEnumerator
-		{
-			private DoublyLinkedList<T> _list;
-
-			private int _index;
-
-			private int _version;
-
-			public T Current { get; private set; }
-
-			object IEnumerator.Current
-			{
-                get => _index == 0 || _index == _list._count + 1
-                    ? throw new InvalidOperationException("Enumerator didn't start or already finished.")
-                    : Current;
-			}
-
-			internal Enumerator(DoublyLinkedList<T> list)
-			{
-				this._list = list;
-				_index = 0;
-				_version = list._version;
-				Current = default;
-			}
-
-			public void Dispose()
-			{
-			}
-
-			public bool MoveNext()
-			{
-				if (_version != _list._version)
-					throw new InvalidOperationException("Enumerable failed version.");
-
-				if (_index < _list._count)
-				{
-					Current = _list._array[_index];
-					_index++;
-					return true;
-				}
-
-				_index = _list._count + 1;
-				Current = default;
-				return false;
-			}
-
-			void IEnumerator.Reset()
+            if (data is null)
             {
-                if (_version != _list._version)
-                    throw new InvalidOperationException("Enumerable failed version.");
+                do
+                {
+                    if (node.next is null)
+                        return node;
 
-                _index = 0;
-				Current = default;
-			}
-		}
-	}
+                    node = node.next;
+                } while (node.next != _head);
+
+                return null;
+            }
+
+            do
+            {
+                if(data.Equals(node.data))
+                    return node;
+
+                node = node.next;
+            } while (node != _head);
+
+            return null;
+        }
+    }
 }
